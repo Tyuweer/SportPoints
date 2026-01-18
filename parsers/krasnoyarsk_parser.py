@@ -74,31 +74,40 @@ class KrasnoyarskParser:
                 full_name = ' '.join(parts[idx:date_idx])
                 idx = date_idx + 1
 
-                # Команда
+                # Команда — ищем до первого результата
                 team_parts = []
-                while idx < len(parts) and not re.match(r'\d{1,2}:\d{2},\d{2}|\d{1,2},\d{2}|DNS|DSQ|DNF|в/к|б/р', parts[idx]):
-                    team_parts.append(parts[idx])
+                while idx < len(parts):
+                    token = parts[idx]
+                    # Проверяем, является ли токен результатом
+                    if re.match(r'\d{1,2},\d{2}$', token) or \
+                        re.match(r'\d{1,2}:\d{2},\d{2}$', token) or \
+                        re.match(r'\d+:\d{2},\d{2}$', token) or \
+                        token in ['DNS', 'DSQ', 'DNF']:
+                        break
+                    # Проверяем, является ли токен нормативом
+                    if token in ['I', 'II', 'III', 'в/к', 'б/р', 'юн']:
+                        break
+                    team_parts.append(token)
                     idx += 1
+
                 team = ' '.join(team_parts)
 
-                # Результат
+                # Результат — ищем его
                 result = status = None
                 if idx < len(parts):
                     token = parts[idx]
                     if token in ['DNS', 'DSQ', 'DNF']:
                         status = token
-                    elif re.match(r'\d{1,2},\d{2}', token):  # 44,20
+                        idx += 1
+                    elif re.match(r'\d{1,2},\d{2}$', token) or \
+                            re.match(r'\d{1,2}:\d{2},\d{2}$', token) or \
+                            re.match(r'\d+:\d{2},\d{2}$', token):
                         result = token
-                    elif re.match(r'\d{1,2}:\d{2},\d{2}', token):  # 00:44,20
-                        result = token
-                    idx += 1
+                        idx += 1
 
-                # Норматив
-                normative = None
-                if idx < len(parts):
-                    rest = ' '.join(parts[idx:])
-                    if any(x in rest for x in ['I', 'II', 'III', 'в/к', 'б/р', 'юн']):
-                        normative = rest
+                # Норматив — всё, что осталось
+                normative_parts = parts[idx:]
+                normative = ' '.join(normative_parts) if normative_parts else None
 
                 return {
                     "place": place,

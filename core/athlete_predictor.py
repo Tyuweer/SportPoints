@@ -53,10 +53,8 @@ def find_best_results_per_event(athlete_name: str, history_data_list):
                     continue
 
                 full_name = r["full_name"]
-                # Приводим к нижнему регистру
                 full_name_lower = full_name.lower()
 
-                # Проверяем, содержит ли полное имя фамилию и имя
                 if search_surname in full_name_lower and (search_name == "" or search_name in full_name_lower):
                     if "result" not in r or not r["result"]:
                         continue
@@ -64,16 +62,13 @@ def find_best_results_per_event(athlete_name: str, history_data_list):
                     if time_sec is None:
                         continue
 
-                    # Если ручная фиксация — добавляем 0.20
                     if r.get("is_manual_timing", False):
                         time_sec += 0.20
 
-                    # Добавляем результат в список для этой дистанции
                     if full_key not in all_results:
                         all_results[full_key] = []
                     all_results[full_key].append({"time": time_sec, "source": r})
 
-    # Теперь выбираем лучшее время по каждой дистанции
     best = {}
     for key, results in all_results.items():
         best_result = min(results, key=lambda x: x["time"])

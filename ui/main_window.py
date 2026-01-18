@@ -1,6 +1,6 @@
 import sys
 import os
-from core.utils import format_time
+import shutil
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QFileDialog, QListWidget, QGroupBox,
@@ -8,9 +8,9 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 from pathlib import Path
+import json
 
 from parsers.parser_factory import get_parser_by_type
-from repository.json_repository import JsonRepository
 
 class PredictorWindow(QMainWindow):
     def __init__(self):
@@ -18,7 +18,9 @@ class PredictorWindow(QMainWindow):
         self.setWindowTitle("Система прогноза очков спортсмена")
         self.resize(1200, 800)
 
-        self.repo = JsonRepository()
+        # Создаём папку ./temp/ рядом с программой
+        self.temp_dir = Path("./temp")
+        self.temp_dir.mkdir(exist_ok=True)
 
         self.target_file = None
         self.target_type = None  # "russian" или "krasnoyarsk"
@@ -26,6 +28,11 @@ class PredictorWindow(QMainWindow):
         self.manual_files = []  # [(path, "krasnoyarsk")]
 
         self.init_ui()
+
+    def closeEvent(self, event):
+        # Удаляем папку ./temp/ при закрытии
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+        event.accept()
 
     def init_ui(self):
         central = QWidget()
@@ -158,17 +165,22 @@ class PredictorWindow(QMainWindow):
         self.log_area.append(msg)
 
     def parse_all(self):
+        # Очищаем папку перед парсингом
+        for f in self.temp_dir.glob("*.json"):
+            f.unlink()
+
+        # Парсим целевой
         if not self.target_file or not self.target_type:
             QMessageBox.warning(self, "Ошибка", "Целевой протокол не выбран или не определён тип!")
             return
 
-        # Парсим целевой
         try:
             parser, is_manual = get_parser_by_type(self.target_type)
             data = parser.parse(self.target_file, is_manual=is_manual)
-            json_filename = self.target_file.with_suffix('.json').name
-            self.repo.save(json_filename, data)
-            self.log(f"✅ Целевой: {self.target_file.name} ({self.target_type}) → {json_filename}")
+            json_filename = self.temp_dir / self.target_file.with_suffix('.json').name
+            with open(json_filename, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            self.log(f"✅ Целевой: {self.target_file.name} ({self.target_type}) → {json_filename.name}")
         except Exception as e:
             self.log(f"❌ Ошибка парсинга целевого: {e}")
             return
@@ -179,42 +191,47 @@ class PredictorWindow(QMainWindow):
             try:
                 parser, is_manual = get_parser_by_type(ptype)
                 data = parser.parse(path, is_manual=is_manual)
-                json_filename = path.with_suffix('.json').name
-                self.repo.save(json_filename, data)
-                self.log(f"✅ {ptype.capitalize()}: {path.name} → {json_filename}")
+                json_filename = self.temp_dir / path.with_suffix('.json').name
+                with open(json_filename, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                self.log(f"✅ {ptype.capitalize()}: {path.name} → {json_filename.name}")
             except Exception as e:
                 self.log(f"❌ Ошибка парсинга {path.name}: {e}")
 
-        self.log("\n🎉 Парсинг завершён! JSON-файлы сохранены в папку temp/")
+        self.log("\n🎉 Парсинг завершён! JSON-файлы сохранены в папку ./temp/.")
 
     def predict_scores(self):
-        athlete_name = self.name_input.text().strip()
-        if not athlete_name:
-            QMessageBox.warning(self, "Ошибка", "Введите имя спортсмена!")
-            return
-
-        # Загрузка целевого JSON
+        # Проверяем, есть ли распарсенные файлы
         if not self.target_file:
             QMessageBox.warning(self, "Ошибка", "Целевой протокол не загружен!")
             return
 
         target_json_name = self.target_file.with_suffix('.json').name
-        target_data = self.repo.load(target_json_name)
-        if not target_data:
-            QMessageBox.warning(self, "Ошибка", f"Целевой файл {target_json_name} не найден.")
+        target_json_path = self.temp_dir / target_json_name
+        if not target_json_path.exists():
+            QMessageBox.warning(self, "Ошибка", f"Целевой файл {target_json_name} не найден. Запустите парсинг.")
             return
 
+        with open(target_json_path, "r", encoding="utf-8") as f:
+            target_data = json.load(f)
+
         # Загрузка всех исторических JSON
-        history_files = list(Path("temp").glob("*.json"))
+        history_files = list(self.temp_dir.glob("*.json"))
         history_data = []
         for f in history_files:
             if f.name != target_json_name:
-                data = self.repo.load(f.name)
-                if data:
-                    history_data.append(data)
+                with open(f, "r", encoding="utf-8") as file:
+                    data = json.load(file)
+                history_data.append(data)
 
         # Импортируем логику
         from core.athlete_predictor import calculate_predicted_scores
+        from core.utils import format_time
+        athlete_name = self.name_input.text().strip()
+        if not athlete_name:
+            QMessageBox.warning(self, "Ошибка", "Введите имя спортсмена!")
+            return
+
         top3, details = calculate_predicted_scores(athlete_name, target_data, history_data)
 
         if not details:
@@ -223,7 +240,7 @@ class PredictorWindow(QMainWindow):
         else:
             self.results_list.clear()
             for d in details:
-                time_str = format_time(d['time'])  # <-- Используем формат MM:SS,cc
+                time_str = format_time(d['time'])
                 if d['place'] > 0:
                     self.results_list.addItem(f"{d['event_key']}: {time_str} (место {d['place']}, {d['points']} очков)")
                 else:
