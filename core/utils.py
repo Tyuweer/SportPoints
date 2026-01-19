@@ -47,4 +47,13 @@ def normalize_event_name(title: str) -> str:
         base = "other"
     dist_match = re.search(r'(\d+)\s*(?:м|метров)', title)
     distance = dist_match.group(1) if dist_match else "0"
-    return f"{base}_{distance}м"
+
+    # Определяем пол
+    if any(x in title for x in ["женщины", "девушки", "юниорки"]):
+        gender = "female"
+    elif any(x in title for x in ["мужчины", "юниоры", "юноши"]):
+        gender = "male"
+    else:
+        gender = "male"  # По умолчанию мужчины
+
+    return f"{base}_{distance}м_{gender}"
