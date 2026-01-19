@@ -1,5 +1,6 @@
 import sys
 import os
+import tempfile
 import shutil
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -7,6 +8,7 @@ from PyQt5.QtWidgets import (
     QMessageBox, QTextEdit, QLineEdit
 )
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont
 from pathlib import Path
 import json
 
@@ -15,15 +17,15 @@ from parsers.parser_factory import get_parser_by_type
 class PredictorWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Система прогноза очков спортсмена")
-        self.resize(1200, 800)
+        self.setWindowTitle("Sport Predictor")
+        self.resize(1000, 700)
 
         # Создаём папку ./temp/ рядом с программой
         self.temp_dir = Path("./temp")
         self.temp_dir.mkdir(exist_ok=True)
 
         self.target_file = None
-        self.target_type = None  # "russian" или "krasnoyarsk"
+        self.target_type = "russian"  # Теперь всегда российский
         self.auto_files = []  # [(path, "russian")]
         self.manual_files = []  # [(path, "krasnoyarsk")]
 
@@ -39,15 +41,13 @@ class PredictorWindow(QMainWindow):
         layout = QVBoxLayout()
 
         # === Целевой протокол ===
-        target_group = QGroupBox("Целевой протокол (1 файл)")
+        target_group = QGroupBox("Целевой протокол")
         target_layout = QHBoxLayout()
         self.target_btn = QPushButton("Выбрать PDF")
         self.target_btn.clicked.connect(self.select_target)
         self.target_label = QLabel("Не выбран")
-        self.target_type_label = QLabel("Тип: ?")
         target_layout.addWidget(self.target_btn)
         target_layout.addWidget(self.target_label)
-        target_layout.addWidget(self.target_type_label)
         target_group.setLayout(target_layout)
         layout.addWidget(target_group)
 
@@ -57,12 +57,14 @@ class PredictorWindow(QMainWindow):
 
         # Авто (российские)
         auto_layout = QHBoxLayout()
-        self.auto_add_btn = QPushButton("Добавить (авто)")
+        self.auto_add_btn = QPushButton("Добавить")
         self.auto_add_btn.clicked.connect(lambda: self.add_files(self.auto_files, "russian"))
-        self.auto_remove_btn = QPushButton("Удалить (авто)")
+        self.auto_remove_btn = QPushButton("Удалить")
         self.auto_remove_btn.clicked.connect(lambda: self.remove_selected(self.auto_list, self.auto_files))
         self.auto_list = QListWidget()
-        auto_layout.addWidget(QLabel("Российские (автофиксация):"))
+        self.auto_list.setFixedHeight(100)
+        self.auto_list.setFixedWidth(350)  # ← Фиксируем ширину
+        auto_layout.addWidget(QLabel("Российские:"))
         auto_layout.addWidget(self.auto_add_btn)
         auto_layout.addWidget(self.auto_remove_btn)
         auto_layout.addWidget(self.auto_list)
@@ -70,12 +72,14 @@ class PredictorWindow(QMainWindow):
 
         # Ручная (краевые)
         manual_layout = QHBoxLayout()
-        self.manual_add_btn = QPushButton("Добавить (ручная)")
+        self.manual_add_btn = QPushButton("Добавить")
         self.manual_add_btn.clicked.connect(lambda: self.add_files(self.manual_files, "krasnoyarsk"))
-        self.manual_remove_btn = QPushButton("Удалить (ручная)")
+        self.manual_remove_btn = QPushButton("Удалить")
         self.manual_remove_btn.clicked.connect(lambda: self.remove_selected(self.manual_list, self.manual_files))
         self.manual_list = QListWidget()
-        manual_layout.addWidget(QLabel("Краевые (ручная фиксация):"))
+        self.manual_list.setFixedHeight(100)
+        self.manual_list.setFixedWidth(350)  # ← Фиксируем ширину
+        manual_layout.addWidget(QLabel("Краевые:"))
         manual_layout.addWidget(self.manual_add_btn)
         manual_layout.addWidget(self.manual_remove_btn)
         manual_layout.addWidget(self.manual_list)
@@ -84,8 +88,8 @@ class PredictorWindow(QMainWindow):
         history_group.setLayout(history_layout)
         layout.addWidget(history_group)
 
-        # === Кнопка запуска парсинга ===
-        self.parse_btn = QPushButton("Запустить парсинг всех файлов")
+        # === Кнопка загрузки протоколов ===
+        self.parse_btn = QPushButton("Загрузить протоколы")
         self.parse_btn.clicked.connect(self.parse_all)
         layout.addWidget(self.parse_btn)
 
@@ -118,26 +122,56 @@ class PredictorWindow(QMainWindow):
         central.setLayout(layout)
         self.setCentralWidget(central)
 
+        # === Минималистичный дизайн ===
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #f0f0f0;
+            }
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #ccc;
+                margin-top: 1ex;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+            }
+            QPushButton {
+                background-color: #e0e0e0;  /* Нейтральный серый */
+                color: #333;
+                border: 1px solid #ccc;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #d0d0d0;
+            }
+            QPushButton:pressed {
+                background-color: #c0c0c0;
+            }
+            QLineEdit {
+                padding: 8px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
+            QLabel {
+                font-size: 12px;
+            }
+            QListWidget {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 5px;
+            }
+        """)
+
     def select_target(self):
         path, _ = QFileDialog.getOpenFileName(self, "Выберите целевой PDF", "", "PDF Files (*.pdf)")
         if path:
             self.target_file = Path(path)
             self.target_label.setText(self.target_file.name)
-            # Пользователь сам выбирает тип
-            type_choice = QMessageBox.question(
-                self,
-                "Тип протокола",
-                f"Какой тип протокола {self.target_file.name}?\n\n"
-                "Нажмите 'Да' для Российского (автофиксация)\n"
-                "Нажмите 'Нет' для Краевого (ручная фиксация)",
-                QMessageBox.Yes | QMessageBox.No
-            )
-            if type_choice == QMessageBox.Yes:
-                self.target_type = "russian"
-                self.target_type_label.setText("Тип: Российский")
-            else:
-                self.target_type = "krasnoyarsk"
-                self.target_type_label.setText("Тип: Краевой")
 
     def add_files(self, file_list, ptype):
         paths, _ = QFileDialog.getOpenFileNames(self, f"Выберите PDF ({ptype})", "", "PDF Files (*.pdf)")
@@ -170,8 +204,8 @@ class PredictorWindow(QMainWindow):
             f.unlink()
 
         # Парсим целевой
-        if not self.target_file or not self.target_type:
-            QMessageBox.warning(self, "Ошибка", "Целевой протокол не выбран или не определён тип!")
+        if not self.target_file:
+            QMessageBox.warning(self, "Ошибка", "Целевой протокол не выбран!")
             return
 
         try:
@@ -198,7 +232,7 @@ class PredictorWindow(QMainWindow):
             except Exception as e:
                 self.log(f"❌ Ошибка парсинга {path.name}: {e}")
 
-        self.log("\n🎉 Парсинг завершён! JSON-файлы сохранены в папку ./temp/.")
+        self.log("\n🎉 Загрузка завершена! JSON-файлы сохранены в папку ./temp/.")
 
     def predict_scores(self):
         # Проверяем, есть ли распарсенные файлы
@@ -209,7 +243,7 @@ class PredictorWindow(QMainWindow):
         target_json_name = self.target_file.with_suffix('.json').name
         target_json_path = self.temp_dir / target_json_name
         if not target_json_path.exists():
-            QMessageBox.warning(self, "Ошибка", f"Целевой файл {target_json_name} не найден. Запустите парсинг.")
+            QMessageBox.warning(self, "Ошибка", f"Целевой файл {target_json_name} не найден. Загрузите протоколы.")
             return
 
         with open(target_json_path, "r", encoding="utf-8") as f:
