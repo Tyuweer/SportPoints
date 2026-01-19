@@ -18,7 +18,6 @@ class KrasnoyarskParser:
                     if not line:
                         continue
 
-                    # Проверяем, новый ли это заголовок дисциплины
                     if self.is_event_header(line):
                         if current_event:
                             events.append(current_event)
@@ -28,7 +27,6 @@ class KrasnoyarskParser:
                         }
                         continue
 
-                    # Парсим строку результата
                     if current_event and re.match(r'^\d+[)\s]?', line):
                         record = self.parse_result_line_krasnoyarsk(line, is_manual=is_manual)
                         if record:
@@ -40,7 +38,6 @@ class KrasnoyarskParser:
         return events
 
     def is_event_header(self, line):
-        """Определяет заголовок дисциплины."""
         return bool(re.search(r'Плавание|Ныряние|Подводное плавание|эстафета', line)) and any(x in line for x in ['женщины', 'мужчины', 'юниор', 'девушки', 'юноши'])
 
     def parse_result_line_krasnoyarsk(self, line, is_manual=True):
@@ -55,13 +52,11 @@ class KrasnoyarskParser:
                 place = parts[0]
                 idx = 1
 
-            # Разряд
             rank = None
             if idx < len(parts) and parts[idx] in ['МС', 'КМС', 'ЗМС', 'МСМК', 'I', 'II', 'III', 'б\\р', 'юн']:
                 rank = parts[idx]
                 idx += 1
 
-            # Дата рождения
             birth_date = None
             date_idx = None
             for i in range(idx, min(idx + 5, len(parts))):
@@ -74,40 +69,28 @@ class KrasnoyarskParser:
                 full_name = ' '.join(parts[idx:date_idx])
                 idx = date_idx + 1
 
-                # Команда — ищем до первого результата
+                # Собираем токены до результата
                 team_parts = []
-                while idx < len(parts):
-                    token = parts[idx]
-                    # Проверяем, является ли токен результатом
-                    if re.match(r'\d{1,2},\d{2}$', token) or \
-                        re.match(r'\d{1,2}:\d{2},\d{2}$', token) or \
-                        re.match(r'\d+:\d{2},\d{2}$', token) or \
-                        token in ['DNS', 'DSQ', 'DNF']:
+                result = None
+                
+                for i in range(idx, len(parts)):
+                    token = parts[i]
+                    
+                    # Результат: 44,53 или 1.45,68 или 01:44,53
+                    if re.match(r'\d{1,2}[,.]\d{2}$', token) or \
+                       re.match(r'\d+\.\d{2},\d{2}$', token) or \
+                       re.match(r'\d{1,2}:\d{2},\d{2}$', token) or \
+                       token in ['DNS', 'DSQ', 'DNF']:
+                        result = token
+                        idx = i + 1
                         break
-                    # Проверяем, является ли токен нормативом
-                    if token in ['I', 'II', 'III', 'в/к', 'б/р', 'юн']:
-                        break
-                    team_parts.append(token)
-                    idx += 1
+                    else:
+                        team_parts.append(token)
 
                 team = ' '.join(team_parts)
 
-                # Результат — ищем его
-                result = status = None
-                if idx < len(parts):
-                    token = parts[idx]
-                    if token in ['DNS', 'DSQ', 'DNF']:
-                        status = token
-                        idx += 1
-                    elif re.match(r'\d{1,2},\d{2}$', token) or \
-                            re.match(r'\d{1,2}:\d{2},\d{2}$', token) or \
-                            re.match(r'\d+:\d{2},\d{2}$', token):
-                        result = token
-                        idx += 1
-
-                # Норматив — всё, что осталось
-                normative_parts = parts[idx:]
-                normative = ' '.join(normative_parts) if normative_parts else None
+                # Остальное — норматив
+                normative = ' '.join(parts[idx:]) if idx < len(parts) else None
 
                 return {
                     "place": place,
@@ -116,13 +99,12 @@ class KrasnoyarskParser:
                     "birth_date": birth_date,
                     "team": team,
                     "result": result,
-                    "status": status,
+                    "status": result if result in ['DNS', 'DSQ', 'DNF'] else None,
                     "normative": normative,
                     "is_manual_timing": True
                 }
 
             else:
-                # Строка без даты — например, только DNS
                 return None
 
         except Exception as e:

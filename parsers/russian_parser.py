@@ -18,7 +18,6 @@ class RussianParser:
                     if not line:
                         continue
 
-                    # Проверяем, новый ли это заголовок дисциплины
                     if self.is_event_header(line):
                         if current_event:
                             events.append(current_event)
@@ -28,7 +27,6 @@ class RussianParser:
                         }
                         continue
 
-                    # Парсим строку результата
                     if current_event and re.match(r'^\d+[)\s]?', line):
                         record = self.parse_result_line(line, is_manual=is_manual)
                         if record:
@@ -40,7 +38,6 @@ class RussianParser:
         return events
 
     def is_event_header(self, line):
-        """Определяет заголовок дисциплины."""
         return bool(re.search(r'^(Ныряние|Плавание|Подводное плавание|эстафета).*[Женщины|Мужчины|Смешанная]', line))
 
     def parse_result_line(self, line, is_manual=False):
@@ -52,13 +49,11 @@ class RussianParser:
             place = parts[0].rstrip(')')
             idx = 1
 
-            # Разряд
             rank = None
             if idx < len(parts) and parts[idx] in ['МС', 'КМС', 'ЗМС', 'МСМК', '1', '2']:
                 rank = parts[idx]
                 idx += 1
 
-            # Год рождения
             year_idx = None
             for i in range(idx, min(idx + 5, len(parts))):
                 if re.fullmatch(r'\d{4}', parts[i]):
@@ -70,28 +65,34 @@ class RussianParser:
                 year = parts[year_idx]
                 idx = year_idx + 1
 
-                # Команда
+                # Собираем все токены, пока не найдем результат
                 team_parts = []
-                while idx < len(parts) and not re.match(r'\d{2}:\d{2},\d{2}', parts[idx]) and parts[idx] != 'Фальстарт':
-                    team_parts.append(parts[idx])
-                    idx += 1
-                team = ' '.join(team_parts)
+                result = final = rank_after = points = note = None
+                
+                for i in range(idx, len(parts)):
+                    token = parts[i]
+                    
+                    # Результат: 00:44,53 или 44,53
+                    if re.match(r'\d{2}:\d{2}[,.]\d{2}$', token) or \
+                        re.match(r'\d{1,2}:\d{2}[,.]\d{2}$', token) or \
+                        re.match(r'\d{1,2}[,.]\d{2}$', token):
+                        if result is None:
+                            result = token
+                        else:
+                            final = token
+                    # Место: просто цифра
+                    elif token.isdigit() and 1 <= int(token) <= 50:
+                        rank_after = token
+                    # Разряд: МС, КМС и т.д.
+                    elif token in ['МС', 'КМС', 'ЗМС', 'МСМК', '1', '2']:
+                        rank_after = token
+                    # Очки: просто цифра
+                    elif token.isdigit() and int(token) <= 50:
+                        points = int(token)
+                    else:
+                        team_parts.append(token)
 
-                # Результат и финал
-                result = final = rank2 = points = note = None
-                if idx < len(parts) and re.match(r'\d{2}:\d{2},\d{2}', parts[idx]):
-                    result = parts[idx]
-                    idx += 1
-                if idx < len(parts) and re.match(r'\d{2}:\d{2},\d{2}', parts[idx]):
-                    final = parts[idx]
-                    idx += 1
-                if idx < len(parts) and parts[idx] in ['МС', 'КМС', 'ЗМС', 'МСМК', '1', '2']:
-                    rank2 = parts[idx]
-                    idx += 1
-                if idx < len(parts) and parts[idx].isdigit():
-                    points = int(parts[idx])
-                    idx += 1
-                note = ' '.join(parts[idx:]) if idx < len(parts) else ''
+                team = ' '.join(team_parts)
 
                 return {
                     "place": place,
@@ -101,14 +102,13 @@ class RussianParser:
                     "team": team,
                     "result": result,
                     "final": final,
-                    "rank_after": rank2,
+                    "rank_after": rank_after,
                     "points": points,
                     "note": note,
-                    "is_manual_timing": False
+                    "is_manual_timing": is_manual
                 }
 
             else:
-                # Эстафета
                 team = parts[1] if len(parts) > 1 else ''
                 result = parts[2] if len(parts) > 2 and re.match(r'\d{2}:\d{2},\d{2}', parts[2]) else None
                 points = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else None
