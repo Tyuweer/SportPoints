@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('parsers', 'parsers'), ('core', 'core'), ('repository', 'repository'), ('ui', 'ui'), ('temp', 'temp')],
+    datas=[('parsers', 'parsers'), ('core', 'core'), ('ui', 'ui')],
     hiddenimports=['PyQt5.sip'],
     hookspath=[],
     hooksconfig={},

@@ -3189,14 +3189,6 @@
   ('random',
    'C:\\Users\\aleks\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\random.py',
    'PYMODULE'),
-  ('repository',
-   'C:\\Users\\aleks\\Desktop\\Cherviak '
-   'Gim\\SportPredictor\\repository\\__init__.py',
-   'PYMODULE'),
-  ('repository.json_repository',
-   'C:\\Users\\aleks\\Desktop\\Cherviak '
-   'Gim\\SportPredictor\\repository\\json_repository.py',
-   'PYMODULE'),
   ('rlcompleter',
    'C:\\Users\\aleks\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\rlcompleter.py',
    'PYMODULE'),

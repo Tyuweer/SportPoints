@@ -1,0 +1,231 @@
+import pdfplumber
+import re
+
+class PervenstvoKraya_Parser:
+    def parse(self, pdf_path, is_manual=True):
+        events = []
+        current_event = None
+
+        with pdfplumber.open(pdf_path) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text(x_tolerance=1, y_tolerance=1)
+                if not text:
+                    continue
+                lines = text.split('\n')
+
+                for line in lines:
+                    line = line.strip()
+
+                    if 'в/к' in line.lower() or 'в.к.' in line.lower() or 'вк' in line.lower():
+                        continue
+
+                    parts = line.split()
+                    if not self.is_athlete_row(parts):
+                        continue
+
+                    # Проверяем, новый ли это заголовок дисциплины
+                    if self.is_event_header(line):
+                        if current_event:
+                            events.append(current_event)
+                        current_event = {
+                            "event_name": line,
+                            "results": []
+                        }
+                        continue
+
+                    # Парсим строку результата
+                    if current_event and re.match(r'^\d+', line):
+                        record = self.parse_result_line_krais(line, is_manual=is_manual)
+                        if record:
+                            current_event["results"].append(record)
+
+            if current_event:
+                events.append(current_event)
+
+        return events
+
+
+    def is_athlete_row(self, parts):
+        NON_ATHLETE_KEYWORDS = [
+    'протокол', 'технических', 'результатов', 'место', 'разряд',
+    'фамилия', 'имя', 'год', 'рожд', 'команда', 'результат',
+    'норматив', 'очки', 'предв', 'финал', 'главный', 'судья',
+    'секретарь', 'соревнований', 'федерация', 'министерство',
+    'первенство', 'чемпионат', 'соревнования', 'протокол',
+    'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля',
+    'августа', 'сентября', 'октября', 'ноября', 'декабря',
+    'января', 'дистанция', 'дисциплина'
+]
+        """Проверяет, является ли строка данными спортсмена"""
+        if not parts:
+            return False
+        
+        # Объединяем первые несколько частей для проверки
+        text_check = ' '.join(parts[:min(5, len(parts))]).lower()
+        
+        # Проверка на наличие ключевых слов не-спортсмена
+        for keyword in NON_ATHLETE_KEYWORDS:
+            if keyword in text_check:
+                return False
+        
+        # Проверка на дату в формате "26 февраля-01 марта 2025 г."
+        date_pattern = r'\d{1,2}\s*(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)'
+        import re
+        if re.search(date_pattern, text_check, re.IGNORECASE):
+            return False
+        
+        return True
+    
+
+    def is_event_header(self, line):
+        """Определяет заголовок дисциплины."""
+        # Ищем строки, содержащие тип дистанции и возрастную категорию
+        keywords = ['плавание', 'ныряние', 'подводное', 'классическ', 'ласт']
+        age_groups = ['юниоры', 'юниорки', 'юноши', 'девушки', 'мужчины', 'женщины', 'мальчики', 'девочки']
+        return any(k in line.lower() for k in keywords) and any(ag in line.lower() for ag in age_groups)
+
+    def parse_result_line_krais(self, line, is_manual=True):
+        parts = line.split()
+        if not parts:
+            return None
+
+        try:
+            place = None
+            idx = 0
+            if parts[0].isdigit():
+                place = parts[0]
+                idx = 1
+
+            # Разряд
+            rank = None
+            # Сначала проверяем возможные комбинации с "юн"
+            if idx + 1 < len(parts):
+                # Проверяем комбинацию "римская цифра + юн"
+                if parts[idx] in ['I', 'II', 'III', '1', '2', '3'] and parts[idx + 1] == 'юн':
+                    rank = f"{parts[idx]} юн"
+                    idx += 2
+                else:
+                    # Проверяем одиночные разряды
+                    if parts[idx] in ['I', 'II', 'III', '1', '2', '3', 'МС', 'КМС', 'ЗМС', 'МСМК', 
+                                    'б\\р', 'б/р', 'мс', 'кмс', 'змс', 'мсмк']:
+                        rank = parts[idx]
+                        idx += 1
+
+            # Имя
+            name_parts = []
+            while idx < len(parts):
+                part = parts[idx]
+                # Если это год рождения
+                if re.fullmatch(r'\d{4}', part):
+                    break
+                # Если это результат
+                if re.match(r'\d{1,2}[,.:]\d{2}([,.:]\d{2})?$', part) or part in ['DNS', 'DSQ', 'DNF']:
+                    break
+                # Если это команда
+                if '.' in part and len(part) > 2 or '""' in part and len(part) > 2:  # Например "КСШ г.Ачинск"
+                    break
+                name_parts.append(part)
+                idx += 1
+
+            if not name_parts:
+                return None
+
+            full_name = ' '.join(name_parts)
+
+            # Год рождения
+            birth_year = None
+            if idx < len(parts) and re.fullmatch(r'\d{4}', parts[idx]):
+                birth_year = parts[idx]
+                idx += 1
+
+            # Команда — ищем до результата
+            team_parts = []
+            while idx < len(parts):
+                part = parts[idx]
+                # Если это результат
+                if re.match(r'\d{1,2}[,.:]\d{2}([,.:]\d{2})?$', part) or part in ['DNS', 'DSQ', 'DNF']:
+                    break
+                team_parts.append(part)
+                idx += 1
+
+            team = ' '.join(team_parts)
+
+            # Результат
+            result = None
+            
+            if idx < len(parts):
+                token = parts[idx]
+                if re.match(r'\d{1,2}[,.:]\d{2}([,.:]\d{2})?$', token):
+                    result = token
+                    idx += 1
+                    
+
+            # Остальное — норматив, очки
+            # Остальное — норматив, очки
+            normative = None
+            points = None
+            rest_parts = parts[idx:]
+
+            i = 0
+            while i < len(rest_parts):
+                p = rest_parts[i]
+                
+                # Проверка на очки
+                if p.isdigit() and int(p) <= 50:
+                    points = int(p)
+                    i += 1
+                    continue
+                if p == 'лично' or p == 'Лично' or p == 'ЛИЧНО':
+                    points = p
+                    i += 1
+                    continue
+                
+                # Проверка на разряд (включая комбинацию с "юн")
+                if p in ['I', 'II', 'III', '1', '2', '3']:
+                    # Проверяем, не идет ли дальше "юн"
+                    if i + 1 < len(rest_parts) and rest_parts[i + 1] == 'юн':
+                        rank_with_jun = f"{p} юн"
+                        normative = rank_with_jun if not normative else normative + ' ' + rank_with_jun
+                        i += 2  # Пропускаем и цифру, и "юн"
+                        continue
+                    else:
+                        normative = p if not normative else normative + ' ' + p
+                        i += 1
+                        continue
+                
+                # Проверка на другие разряды
+                elif p in ['КМС', 'МС', 'б\\р', 'б/р', 'ЗМС', 'МСМК']:
+                    normative = p if not normative else normative + ' ' + p
+                    i += 1
+                    continue
+                
+                # Проверка на одиночное "юн" (если вдруг отдельно стоит)
+                elif p == 'юн':
+                    normative = 'юн' if not normative else normative + ' юн'
+                    i += 1
+                    continue
+                
+                # Если это не разряд и не очки, то все остальное - норматив
+                else:
+                    # Собираем оставшиеся части как норматив
+                    remaining = ' '.join(rest_parts[i:])
+                    normative = remaining if not normative else normative + ' ' + remaining
+                    break
+
+            return {
+                "place": place,
+                "rank": rank,
+                "full_name": full_name,
+                "birth_year": birth_year,
+                "team": team,
+                "result": result,
+                "normative": normative,
+                "points": points,
+                "is_manual_timing": is_manual
+            }
+
+        except Exception as e:
+            print(f"Ошибка парсинга строки: '{line}' — {e}")
+            return None
+
+    
