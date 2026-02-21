@@ -1,7 +1,7 @@
 import pdfplumber
 import re
 
-class KubokKraya_Parser:
+class PervenstvoGoroda_Parser:
     def parse(self, pdf_path, is_manual=True):
         events = []
         current_event = None
@@ -58,7 +58,9 @@ class KubokKraya_Parser:
     'первенство', 'чемпионат', 'соревнования', 'протокол',
     'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля',
     'августа', 'сентября', 'октября', 'ноября', 'декабря',
-    'января', 'дистанция', 'дисциплина', 'день'
+    'января', 'дистанция', 'дисциплина', 'день', 'фамилия', 'спортсменка', 'случае', 'превышения', 
+    'суммарного', 'количества', 'участников', 'выступающих', 'команду', 'ячейки', 'красным', 'дистанций', 
+    'зачет', 'буква', 'желтый', 'синий', 'цвет', 'вставить', 'после', 'строки', 'выбирается', 'середин', 'списк', 'жирной', 'номер'
 ]
         """Проверяет, является ли строка данными спортсмена"""
         if not parts:
@@ -137,22 +139,33 @@ class KubokKraya_Parser:
             while idx < len(parts):
                 part = parts[idx]
                 # Проверяем, не содержит ли часть дату рождения внутри
-                # Например: "Михайлович30.01.2008"
+                # Добавляем новый паттерн для формата M/D/YYYY
                 date_match = re.search(r'\d{2}\.\d{2}\.(19|20)\d{2}$', part)
                 if date_match:
-                # Разделяем часть на имя и дату
-                  name_part = re.sub(r'\d{2}\.\d{2}\.(19|20)\d{2}$', '', part)
-                  if name_part:
-                    name_parts.append(name_part)
-                  birth_date = date_match.group(0)
-                  idx += 1
-                    # Дата будет обработана на следующей итерации
-                  break
+                    # Разделяем часть на имя и дату
+                    name_part = re.sub(r'\d{2}\.\d{2}\.(19|20)\d{2}$', '', part)
+                    if name_part:
+                        name_parts.append(name_part)
+                    birth_date = date_match.group(0)
+                    idx += 1
+                    break
+
+                # Добавляем проверку для формата 7/21/2014
+                slash_date_match = re.search(r'\d{1,2}/\d{1,2}/(19|20)\d{2}$', part)
+                if slash_date_match:
+                    # Разделяем часть на имя и дату
+                    name_part = re.sub(r'\d{1,2}/\d{1,2}/(19|20)\d{2}$', '', part)
+                    if name_part:
+                        name_parts.append(name_part)
+                    birth_date = slash_date_match.group(0)
+                    idx += 1
+                    break
 
                 # Если это год рождения
                 if re.fullmatch(r'\d{4}', part):
                     break
-                if re.fullmatch(r'\d{2}\.\d{2}\.(19|20)\d{2}', part):
+                # Добавляем новый формат в существующую проверку
+                if re.fullmatch(r'\d{2}\.\d{2}\.(19|20)\d{2}', part) or re.fullmatch(r'\d{1,2}/\d{1,2}/(19|20)\d{2}', part):
                     birth_date = part
                     break
                 
@@ -177,17 +190,21 @@ class KubokKraya_Parser:
                 if re.fullmatch(r'\d{4}', birth_date):
                     # Это просто год
                     birth_year = birth_date
-                elif '.' in birth_date:
-                    # Это полная дата ДД.ММ.ГГГГ - берем последнюю часть
-                    birth_year = birth_date.split('.')[-1]
-            
+                elif '.' in birth_date or '/' in birth_date:  # Добавляем поддержку слешей
+                    # Это полная дата - берем последнюю часть
+                    # Определяем разделитель
+                    separator = '.' if '.' in birth_date else '/'
+                    birth_year = birth_date.split(separator)[-1]
+
             # Если birth_date не был найден в цикле, проверяем текущую часть
             if not birth_date and idx < len(parts):
                 current_part = parts[idx]
-                # Проверяем, не дата ли это
-                if re.fullmatch(r'\d{2}\.\d{2}\.(19|20)\d{2}', current_part):
+                # Добавляем новый формат в проверку
+                if re.fullmatch(r'\d{2}\.\d{2}\.(19|20)\d{2}', current_part) or re.fullmatch(r'\d{1,2}/\d{1,2}/(19|20)\d{2}', current_part):
                     birth_date = current_part
-                    birth_year = current_part.split('.')[-1]
+                    # Определяем разделитель для извлечения года
+                    separator = '.' if '.' in current_part else '/'
+                    birth_year = current_part.split(separator)[-1]
                     idx += 1
                 elif re.fullmatch(r'\d{4}', current_part):
                     birth_date = current_part

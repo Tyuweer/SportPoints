@@ -1,7 +1,7 @@
 import pdfplumber
 import re
 
-class KubokKraya_Parser:
+class Sprinters_Day_Parser:
     def parse(self, pdf_path, is_manual=True):
         events = []
         current_event = None
@@ -18,7 +18,7 @@ class KubokKraya_Parser:
                     line = line.strip()
                     
                     if 'в/к' in line.lower() or 'в.к.' in line.lower() or 'вк' in line.lower():
-                        continue
+                      continue
 
                     parts = line.split()
                     if not self.is_athlete_row(parts):

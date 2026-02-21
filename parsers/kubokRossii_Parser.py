@@ -1,7 +1,8 @@
 import pdfplumber
 import re
+from core.utils import get_best_time
 
-class KubokKraya_Parser:
+class KubokRossii_Parser:
     def parse(self, pdf_path, is_manual=True):
         events = []
         current_event = None
@@ -12,14 +13,17 @@ class KubokKraya_Parser:
                 text = page.extract_text(x_tolerance=1, y_tolerance=1)
                 if not text:
                     continue
+                # Разбиение на массив строк по началу новой строки
                 lines = text.split('\n')
 
                 for line in lines:
+                    # Удалили пробелы и табы в начале и в конце строки
                     line = line.strip()
                     
                     if 'в/к' in line.lower() or 'в.к.' in line.lower() or 'вк' in line.lower():
                         continue
-
+                    
+                    #Разбиение на массив по пробелу
                     parts = line.split()
                     if not self.is_athlete_row(parts):
                         continue
@@ -110,24 +114,22 @@ class KubokKraya_Parser:
       try:
             place = None
             idx = 0
-            if parts[0].isdigit():
+            if parts[0].isdigit():  
                 place = parts[0]
                 idx = 1
 
             # Разряд
             rank = None
-            # Сначала проверяем возможные комбинации с "юн"
+            # Сначала проверяем составные разряды (с "юн")
             if idx + 1 < len(parts):
-                # Проверяем комбинацию "римская цифра + юн"
                 if parts[idx] in ['I', 'II', 'III', '1', '2', '3'] and parts[idx + 1] == 'юн':
                     rank = f"{parts[idx]} юн"
                     idx += 2
-                else:
-                    # Проверяем одиночные разряды
-                    if parts[idx] in ['I', 'II', 'III', '1', '2', '3', 'МС', 'КМС', 'ЗМС', 'МСМК', 
-                                    'б\\р', 'б/р', 'мс', 'кмс', 'змс', 'мсмк']:
-                        rank = parts[idx]
-                        idx += 1
+                # Затем проверяем все одиночные разряды
+                elif parts[idx] in ['I', 'II', 'III', '1', '2', '3', 'МС', 'КМС', 'ЗМС', 'МСМК', 
+                                'б\\р', 'б/р', 'мс', 'кмс', 'змс', 'мсмк']:
+                    rank = parts[idx]
+                    idx += 1
 
             # Имя
             name_parts = []
@@ -203,20 +205,30 @@ class KubokKraya_Parser:
                     break
                 team_parts.append(part)
                 idx += 1
-
             team = ' '.join(team_parts)
 
             # Результат
             result = None
-            
             if idx < len(parts):
                 token = parts[idx]
                 if re.match(r'\d{1,2}[,.:]\d{2}([,.:]\d{2})?$', token):
                     result = token
                     idx += 1
                     
+            # Результат финала
+            final_result = None
+            if idx < len(parts) and result:
+                token = parts[idx]
+                if re.match(r'\d{1,2}[,.:]\d{2}([,.:]\d{2})?$', token):
+                    final_result = token
+                    idx += 1
+            
+            # Лучший результат 
+            best_result = None
+            if final_result:
+                best_result = get_best_time(result, final_result)
 
-            # Остальное — норматив, очки
+
             # Остальное — норматив, очки
             normative = None
             points = None
@@ -225,6 +237,34 @@ class KubokKraya_Parser:
             i = 0
             while i < len(rest_parts):
                 p = rest_parts[i]
+                
+                if not normative:
+                # Проверка на разряд (включая комбинацию с "юн")
+                    if p in ['I', 'II', 'III', '1', '2', '3']:
+                        # Проверяем, не идет ли дальше "юн"
+                        if i + 1 < len(rest_parts) and rest_parts[i + 1] == 'юн':
+                            rank_with_jun = f"{p} юн"
+                            normative = rank_with_jun
+                            i += 2  # Пропускаем и цифру, и "юн"
+                            continue
+                        else:
+                            normative = p
+                            i += 1
+                            continue
+                
+                    # Проверка на другие разряды
+                    elif p in ['КМС', 'МС', 'б\\р', 'б/р', 'ЗМС', 'МСМК']:
+                        if not normative:
+                            normative = p
+                        i += 1
+                        continue
+                
+                    # Проверка на одиночное "юн" (если вдруг отдельно стоит)
+                    elif p == 'юн':
+                        normative = 'юн' if not normative else normative + ' юн'
+                        i += 1
+                        continue
+                
                 
                 # Проверка на очки
                 if p.isdigit() and int(p) <= 50:
@@ -235,39 +275,15 @@ class KubokKraya_Parser:
                     points = p
                     i += 1
                     continue
-                
-                # Проверка на разряд (включая комбинацию с "юн")
-                if p in ['I', 'II', 'III', '1', '2', '3']:
-                    # Проверяем, не идет ли дальше "юн"
-                    if i + 1 < len(rest_parts) and rest_parts[i + 1] == 'юн':
-                        rank_with_jun = f"{p} юн"
-                        normative = rank_with_jun if not normative else normative + ' ' + rank_with_jun
-                        i += 2  # Пропускаем и цифру, и "юн"
-                        continue
-                    else:
-                        normative = p if not normative else normative + ' ' + p
-                        i += 1
-                        continue
-                
-                # Проверка на другие разряды
-                elif p in ['КМС', 'МС', 'б\\р', 'б/р', 'ЗМС', 'МСМК']:
-                    normative = p if not normative else normative + ' ' + p
-                    i += 1
-                    continue
-                
-                # Проверка на одиночное "юн" (если вдруг отдельно стоит)
-                elif p == 'юн':
-                    normative = 'юн' if not normative else normative + ' юн'
-                    i += 1
-                    continue
-                
+            
                 # Если это не разряд и не очки, то все остальное - норматив
                 else:
                     # Собираем оставшиеся части как норматив
                     remaining = ' '.join(rest_parts[i:])
                     normative = remaining if not normative else normative + ' ' + remaining
                     break
-
+                
+            
             return {
                 "place": place,
                 "rank": rank,
@@ -275,6 +291,8 @@ class KubokKraya_Parser:
                 "birth_year": birth_year,
                 "team": team,
                 "result": result,
+                "final_Result": final_result,
+                "best_Result": best_result, 
                 "normative": normative,
                 "points": points,
                 "is_manual_timing": is_manual

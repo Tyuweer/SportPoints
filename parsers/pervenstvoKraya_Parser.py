@@ -5,6 +5,7 @@ class PervenstvoKraya_Parser:
     def parse(self, pdf_path, is_manual=True):
         events = []
         current_event = None
+        seen_events = set()
 
         with pdfplumber.open(pdf_path) as pdf:
             for page in pdf.pages:
@@ -25,12 +26,15 @@ class PervenstvoKraya_Parser:
 
                     # Проверяем, новый ли это заголовок дисциплины
                     if self.is_event_header(line):
+                        if line in seen_events:
+                            continue
                         if current_event:
                             events.append(current_event)
                         current_event = {
                             "event_name": line,
                             "results": []
                         }
+                        seen_events.add(line)
                         continue
 
                     # Парсим строку результата
@@ -80,7 +84,7 @@ class PervenstvoKraya_Parser:
     def is_event_header(self, line):
         """Определяет заголовок дисциплины."""
         # Ищем строки, содержащие тип дистанции и возрастную категорию
-        keywords = ['плавание', 'ныряние', 'подводное', 'классическ', 'ласт']
+        keywords = ['плавание', 'ныряние', 'подводное', 'классическ', 'ласт', 'эстафета']
         age_groups = ['юниоры', 'юниорки', 'юноши', 'девушки', 'мужчины', 'женщины', 'мальчики', 'девочки']
         return any(k in line.lower() for k in keywords) and any(ag in line.lower() for ag in age_groups)
 
