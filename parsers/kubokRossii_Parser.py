@@ -1,6 +1,10 @@
 import pdfplumber
 import re
 from core.utils import get_best_time
+from core.utils import is_athlete_row
+from core.utils import is_event_header
+from core.utils import normalize_line
+from core.utils import normalize_event_name
 
 class KubokRossii_Parser:
     def parse(self, pdf_path, is_manual=True):
@@ -25,20 +29,21 @@ class KubokRossii_Parser:
                     
                     #Разбиение на массив по пробелу
                     parts = line.split()
-                    if not self.is_athlete_row(parts):
+                    if not is_athlete_row(parts):
                         continue
 
                     # Проверяем, новый ли это заголовок дисциплины
-                    if self.is_event_header(line):
-                        if line in seen_events:
+                    if is_event_header(line):
+                        line_ = normalize_event_name(line)
+                        if line_ in seen_events:
                             continue
                         if current_event:
                             events.append(current_event)
                         current_event = {
-                            "event_name": line,
+                            "event_name": line_,
                             "results": []
                         }
-                        seen_events.add(line)
+                        seen_events.add(line_)
                         continue
 
                     # Парсим строку результата
@@ -52,66 +57,14 @@ class KubokRossii_Parser:
 
         return events
 
-
-    def is_athlete_row(self, parts):
-        NON_ATHLETE_KEYWORDS = [
-    'протокол', 'технических', 'результатов', 'место', 'разряд',
-    'фамилия', 'имя', 'год', 'рожд', 'команда', 'результат',
-    'норматив', 'очки', 'предв', 'финал', 'главный', 'судья',
-    'секретарь', 'соревнований', 'федерация', 'министерство',
-    'первенство', 'чемпионат', 'соревнования', 'протокол',
-    'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля',
-    'августа', 'сентября', 'октября', 'ноября', 'декабря',
-    'января', 'дистанция', 'дисциплина', 'день'
-]
-        """Проверяет, является ли строка данными спортсмена"""
-        if not parts:
-            return False
-        
-        # Объединяем первые несколько частей для проверки
-        text_check = ' '.join(parts[:min(5, len(parts))]).lower()
-        
-        # Проверка на наличие ключевых слов не-спортсмена
-        for keyword in NON_ATHLETE_KEYWORDS:
-            if keyword in text_check:
-                return False
-        
-        # Проверка на дату в формате "26 февраля-01 марта 2025 г."
-        date_pattern = r'\d{1,2}\s*(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)'
-        import re
-        if re.search(date_pattern, text_check, re.IGNORECASE):
-            return False
-        
-        return True
-    
-
-    def is_event_header(self, line):
-        """Определяет заголовок дисциплины."""
-        # Ищем строки, содержащие тип дистанции и возрастную категорию
-        keywords = ['плавание', 'ныряние', 'подводное', 'классическ', 'ласт']
-        age_groups = ['юниоры', 'юниорки', 'юноши', 'девушки', 'мужчины', 'женщины', 'мальчики', 'девочки']
-        return any(k in line.lower() for k in keywords) and any(ag in line.lower() for ag in age_groups)
-
     def parse_result_line_krais(self, line, is_manual=True):
-        
-      def normalize_line(line):
-              # 1. Добавляем пробелы между временем и разрядом: "59,03III" -> "59,03 III"
-              line = re.sub(r'(\d{1,2}[,.:]\d{2}(?:[,.:]\d{2})?)([IКМСб\\/юн])', r'\1 \2', line)
-              
-              # 2. Добавляем пробелы между разрядом и "юн": "IIIюн" -> "III юн"
-              line = re.sub(r'([I]{1,3}|[1-3])(юн)', r'\1 \2', line)
-              
-              # 3. Обрабатываем сложные случаи: "59,03IIIюн" -> "59,03 III юн"
-              line = re.sub(r'(\d{1,2}[,.:]\d{2}(?:[,.:]\d{2})?)([I]{1,3}|[1-3])(юн)', r'\1 \2 \3', line)
-              return line
-      
-      line = normalize_line(line)
-      parts = line.split()
+        line = normalize_line(line)
+        parts = line.split()
 
-      if not parts:
-            return None
+        if not parts:
+                return None
 
-      try:
+        try:
             place = None
             idx = 0
             if parts[0].isdigit():  
@@ -143,13 +96,13 @@ class KubokRossii_Parser:
                 date_match = re.search(r'\d{2}\.\d{2}\.(19|20)\d{2}$', part)
                 if date_match:
                 # Разделяем часть на имя и дату
-                  name_part = re.sub(r'\d{2}\.\d{2}\.(19|20)\d{2}$', '', part)
-                  if name_part:
-                    name_parts.append(name_part)
-                  birth_date = date_match.group(0)
-                  idx += 1
-                    # Дата будет обработана на следующей итерации
-                  break
+                    name_part = re.sub(r'\d{2}\.\d{2}\.(19|20)\d{2}$', '', part)
+                    if name_part:
+                        name_parts.append(name_part)
+                    birth_date = date_match.group(0)
+                    idx += 1
+                        # Дата будет обработана на следующей итерации
+                    break
 
                 # Если это год рождения
                 if re.fullmatch(r'\d{4}', part):
@@ -214,7 +167,7 @@ class KubokRossii_Parser:
                 if re.match(r'\d{1,2}[,.:]\d{2}([,.:]\d{2})?$', token):
                     result = token
                     idx += 1
-                    
+
             # Результат финала
             final_result = None
             if idx < len(parts) and result:
@@ -227,7 +180,8 @@ class KubokRossii_Parser:
             best_result = None
             if final_result:
                 best_result = get_best_time(result, final_result)
-
+            else: 
+                best_result = result
 
             # Остальное — норматив, очки
             normative = None
@@ -290,7 +244,7 @@ class KubokRossii_Parser:
                 "full_name": full_name,
                 "birth_year": birth_year,
                 "team": team,
-                "result": result,
+                "result1": result,
                 "final_Result": final_result,
                 "best_Result": best_result, 
                 "normative": normative,
@@ -298,7 +252,7 @@ class KubokRossii_Parser:
                 "is_manual_timing": is_manual
             }
 
-      except Exception as e:
+        except Exception as e:
             print(f"Ошибка парсинга строки: '{line}' — {e}")
             return None
 

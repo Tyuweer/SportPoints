@@ -1,5 +1,9 @@
 import pdfplumber
 import re
+from core.utils import is_athlete_row
+from core.utils import is_event_header
+from core.utils import normalize_line
+from core.utils import normalize_event_name
 
 class PervenstvoKraya_Parser:
     def parse(self, pdf_path, is_manual=True):
@@ -21,20 +25,21 @@ class PervenstvoKraya_Parser:
                         continue
 
                     parts = line.split()
-                    if not self.is_athlete_row(parts):
+                    if not is_athlete_row(parts):
                         continue
 
                     # Проверяем, новый ли это заголовок дисциплины
-                    if self.is_event_header(line):
-                        if line in seen_events:
+                    if is_event_header(line):
+                        line_ = normalize_event_name(line)
+                        if line_ in seen_events:
                             continue
                         if current_event:
                             events.append(current_event)
                         current_event = {
-                            "event_name": line,
+                            "event_name": line_,
                             "results": []
                         }
-                        seen_events.add(line)
+                        seen_events.add(line_)
                         continue
 
                     # Парсим строку результата
@@ -48,47 +53,8 @@ class PervenstvoKraya_Parser:
 
         return events
 
-
-    def is_athlete_row(self, parts):
-        NON_ATHLETE_KEYWORDS = [
-    'протокол', 'технических', 'результатов', 'место', 'разряд',
-    'фамилия', 'имя', 'год', 'рожд', 'команда', 'результат',
-    'норматив', 'очки', 'предв', 'финал', 'главный', 'судья',
-    'секретарь', 'соревнований', 'федерация', 'министерство',
-    'первенство', 'чемпионат', 'соревнования', 'протокол',
-    'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля',
-    'августа', 'сентября', 'октября', 'ноября', 'декабря',
-    'января', 'дистанция', 'дисциплина'
-]
-        """Проверяет, является ли строка данными спортсмена"""
-        if not parts:
-            return False
-        
-        # Объединяем первые несколько частей для проверки
-        text_check = ' '.join(parts[:min(5, len(parts))]).lower()
-        
-        # Проверка на наличие ключевых слов не-спортсмена
-        for keyword in NON_ATHLETE_KEYWORDS:
-            if keyword in text_check:
-                return False
-        
-        # Проверка на дату в формате "26 февраля-01 марта 2025 г."
-        date_pattern = r'\d{1,2}\s*(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)'
-        import re
-        if re.search(date_pattern, text_check, re.IGNORECASE):
-            return False
-        
-        return True
-    
-
-    def is_event_header(self, line):
-        """Определяет заголовок дисциплины."""
-        # Ищем строки, содержащие тип дистанции и возрастную категорию
-        keywords = ['плавание', 'ныряние', 'подводное', 'классическ', 'ласт', 'эстафета']
-        age_groups = ['юниоры', 'юниорки', 'юноши', 'девушки', 'мужчины', 'женщины', 'мальчики', 'девочки']
-        return any(k in line.lower() for k in keywords) and any(ag in line.lower() for ag in age_groups)
-
     def parse_result_line_krais(self, line, is_manual=True):
+        line = normalize_line(line)
         parts = line.split()
         if not parts:
             return None
@@ -163,17 +129,37 @@ class PervenstvoKraya_Parser:
                     result = token
                     idx += 1
                     
-
-            # Остальное — норматив, очки
             # Остальное — норматив, очки
             normative = None
             points = None
             rest_parts = parts[idx:]
-
             i = 0
             while i < len(rest_parts):
                 p = rest_parts[i]
-                
+                if not normative:
+                # Проверка на разряд (включая комбинацию с "юн")
+                    if p in ['I', 'II', 'III', '1', '2', '3']:
+                        # Проверяем, не идет ли дальше "юн"
+                        if i + 1 < len(rest_parts) and rest_parts[i + 1] == 'юн':
+                            rank_with_jun = f"{p} юн"
+                            normative = rank_with_jun
+                            i += 2  # Пропускаем и цифру, и "юн"
+                            continue
+                        else:
+                            normative = p
+                            i += 1
+                            continue
+                    # Проверка на другие разряды
+                    elif p in ['КМС', 'МС', 'б\\р', 'б/р', 'ЗМС', 'МСМК']:
+                        if not normative:
+                            normative = p
+                        i += 1
+                        continue
+                    # Проверка на одиночное "юн" (если вдруг отдельно стоит)
+                    elif p == 'юн':
+                        normative = 'юн' if not normative else normative + ' юн'
+                        i += 1
+                        continue
                 # Проверка на очки
                 if p.isdigit() and int(p) <= 50:
                     points = int(p)
@@ -183,39 +169,12 @@ class PervenstvoKraya_Parser:
                     points = p
                     i += 1
                     continue
-                
-                # Проверка на разряд (включая комбинацию с "юн")
-                if p in ['I', 'II', 'III', '1', '2', '3']:
-                    # Проверяем, не идет ли дальше "юн"
-                    if i + 1 < len(rest_parts) and rest_parts[i + 1] == 'юн':
-                        rank_with_jun = f"{p} юн"
-                        normative = rank_with_jun if not normative else normative + ' ' + rank_with_jun
-                        i += 2  # Пропускаем и цифру, и "юн"
-                        continue
-                    else:
-                        normative = p if not normative else normative + ' ' + p
-                        i += 1
-                        continue
-                
-                # Проверка на другие разряды
-                elif p in ['КМС', 'МС', 'б\\р', 'б/р', 'ЗМС', 'МСМК']:
-                    normative = p if not normative else normative + ' ' + p
-                    i += 1
-                    continue
-                
-                # Проверка на одиночное "юн" (если вдруг отдельно стоит)
-                elif p == 'юн':
-                    normative = 'юн' if not normative else normative + ' юн'
-                    i += 1
-                    continue
-                
                 # Если это не разряд и не очки, то все остальное - норматив
                 else:
                     # Собираем оставшиеся части как норматив
                     remaining = ' '.join(rest_parts[i:])
                     normative = remaining if not normative else normative + ' ' + remaining
                     break
-
             return {
                 "place": place,
                 "rank": rank,

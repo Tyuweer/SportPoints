@@ -6,6 +6,7 @@ from parsers.stayerDay_Parser import StayerDay_Parser
 from parsers.pervenstvoGoroda_Parser import PervenstvoGoroda_Parser
 from parsers.kubokRossii_Parser import KubokRossii_Parser
 from parsers.snowfins_Parser import Snowfins_Parser
+from parsers.goldfins_Parser import Goldfins_Parser
 
 PARSERS = {
     "Первенство Края": PervenstvoKraya_Parser,
@@ -14,7 +15,8 @@ PARSERS = {
     "День стаера" : StayerDay_Parser,
     "Первенство города" : PervenstvoGoroda_Parser,
     "Кубок России, Чемпионат России, Первенство России с финалами": KubokRossii_Parser,
-    "Снежные ласты": Snowfins_Parser,
+    "Всероссийские соревнования без финалов": Snowfins_Parser,
+    "Золотая Ласта": Goldfins_Parser
     # Добавляй сюда новые парсеры по мере написания:
     # "Кубок Сибири": SiberiaCupParser,
     # "Чемпионат города": CityChampParser,

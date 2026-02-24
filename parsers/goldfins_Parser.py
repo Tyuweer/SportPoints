@@ -1,16 +1,15 @@
 import pdfplumber
 import re
-from core.utils import is_event_header
+from core.utils import get_best_time
 from core.utils import is_athlete_row
+from core.utils import is_event_header
 from core.utils import normalize_line
-from core.utils import normalize_event_name
 
-class Snowfins_Parser:
+class Goldfins_Parser:
     def parse(self, pdf_path, is_manual=True):
         events = []
         current_event = None
         seen_events = set()
-        # skip_event = False
 
         with pdfplumber.open(pdf_path) as pdf:
             for page in pdf.pages:
@@ -34,20 +33,16 @@ class Snowfins_Parser:
 
                     # Проверяем, новый ли это заголовок дисциплины
                     if is_event_header(line):
-                        line_ = normalize_event_name(line)
-                        if line_ in seen_events:
+                        if line in seen_events:
                             continue
                         if current_event:
                             events.append(current_event)
                         current_event = {
-                            "event_name": line_,
+                            "event_name": line,
                             "results": []
                         }
-                        seen_events.add(line_)
+                        seen_events.add(line)
                         continue
-
-                    # if skip_event:
-                    #     continue
 
                     # Парсим строку результата
                     if current_event and re.match(r'^\d+', line):
@@ -60,13 +55,12 @@ class Snowfins_Parser:
 
         return events
 
-
     def parse_result_line_krais(self, line, is_manual=True):
         line = normalize_line(line)
         parts = line.split()
-        
+
         if not parts:
-            return None
+                return None
 
         try:
             place = None
@@ -165,12 +159,47 @@ class Snowfins_Parser:
             team = ' '.join(team_parts)
 
             # Результат
-            result = None
+            result1 = None
             if idx < len(parts):
                 token = parts[idx]
                 if re.match(r'\d{1,2}[,.:]\d{2}([,.:]\d{2})?$', token):
-                    result = token
+                    result1 = token
                     idx += 1
+
+            # Второй результат
+            result2 = None
+            if idx < len(parts) and result1:
+                token = parts[idx]
+                if re.match(r'\d{1,2}[,.:]\d{2}([,.:]\d{2})?$', token):
+                    result2 = token
+                    idx += 1
+
+            # Третий результат
+            result3 = None
+            if idx < len(parts) and result1 and result2:
+                token = parts[idx]
+                if re.match(r'\d{1,2}[,.:]\d{2}([,.:]\d{2})?$', token):
+                    result3 = token
+                    idx += 1
+
+            # Результат финала
+            final_result = None
+            if idx < len(parts) and result1 and result2 and result3:
+                token = parts[idx]
+                if re.match(r'\d{1,2}[,.:]\d{2}([,.:]\d{2})?$', token):
+                    final_result = token
+                    idx += 1
+            
+            # Лучший результат 
+            best_result = None
+            if final_result:
+                best_result = get_best_time(result1, result2, result3, final_result)
+            elif result3:
+                best_result = get_best_time(result1, result2, result3)
+            elif result2:
+                best_result = get_best_time(result1, result2)
+            else: 
+                best_result = result1
 
             # Остальное — норматив, очки
             normative = None
@@ -233,7 +262,11 @@ class Snowfins_Parser:
                 "full_name": full_name,
                 "birth_year": birth_year,
                 "team": team,
-                "result": result,
+                "result1": result1,
+                "result2": result2,
+                "result3": result3,
+                "final_Result": final_result,
+                "best_Result": best_result, 
                 "normative": normative,
                 "points": points,
                 "is_manual_timing": is_manual
