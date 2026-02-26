@@ -33,30 +33,6 @@ def get_points_by_place(place: int) -> int:
     else:
         return 1  # Все места после 24 — по 1 очку
 
-# def normalize_event_name(title: str) -> str:
-#     title = title.lower()
-#     if "ныряние" in title:
-#         base = "ныряние"
-#     elif "классическ" in title:
-#         base = "плавание_классические_ласты"
-#     elif "подводное" in title:
-#         base = "подводное_плавание"
-#     elif "плавание" in title or "ластах" in title:
-#         base = "плавание_ласты"
-#     else:
-#         base = "other"
-#     dist_match = re.search(r'(\d+)\s*(?:м|метров)', title)
-#     distance = dist_match.group(1) if dist_match else "0"
-
-#     # Определяем пол
-#     if any(x in title for x in ["женщины", "девушки", "юниорки"]):
-#         gender = "female"
-#     elif any(x in title for x in ["мужчины", "юниоры", "юноши"]):
-#         gender = "male"
-#     else:
-#         gender = "male"  # По умолчанию мужчины
-
-#     return f"{base}_{distance}м_{gender}"
 def normalize_event_name(title: str) -> str:
     """Главная функция нормализации."""
     # 1. Очистка от мусора
@@ -110,7 +86,6 @@ def is_athlete_row(parts):
     'медотвод', 'отвод'
 
 ]
-        """Проверяет, является ли строка данными спортсмена"""
         if not parts:
             return False
         
@@ -127,7 +102,7 @@ def is_athlete_row(parts):
         import re
         if re.search(date_pattern, text_check, re.IGNORECASE):
             return False
-        
+                
         return True
 
 def normalize_line(line):
@@ -225,3 +200,38 @@ def normalize_distance(title: str) -> str:
         return f"{dist_match.group(1)} м"
         
     return "0 м"
+
+def is_relay_event(event_name: str) -> bool:
+    """
+    Проверяет, является ли дисциплина эстафетой.
+    """
+    if not event_name:
+        return False
+    
+    event_lower = event_name.lower()
+    
+    # Признаки эстафеты
+    relay_indicators = [
+        'эстафет',
+        '4x',           # 4x100
+        '4х',           # 4х100 (кириллическая x)
+        '4 x',          # 4 x 100
+        '4 х',          # 4 х 100
+    ]
+    
+    return any(indicator in event_lower for indicator in relay_indicators)
+
+def get_relay_leg_distance(event_name: str) -> int | None:
+    """
+    Извлекает дистанцию одного этапа эстафеты.
+    Например: "4x100" -> 100
+    """
+    if not event_name:
+        return None
+    
+    # Ищем паттерн 4x100 или 4х100
+    match = re.search(r'4\s*[xх]\s*(\d+)', event_name)
+    if match:
+        return int(match.group(1))
+    
+    return None
