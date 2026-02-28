@@ -1,9 +1,13 @@
 import pdfplumber
 import re
-from core.utils import get_best_time
-from core.utils import is_athlete_row
-from core.utils import is_event_header
-from core.utils import normalize_line
+from core.utils import (
+get_best_time,
+is_athlete_row,
+normalize_line,
+normalize_event_name,
+is_event_header,
+is_relay_event
+)
 
 class Goldfins_Parser:
     def parse(self, pdf_path, is_manual=True):
@@ -33,13 +37,15 @@ class Goldfins_Parser:
 
                     # Проверяем, новый ли это заголовок дисциплины
                     if is_event_header(line):
-                        if line in seen_events:
-                            continue
+                        line_ = normalize_event_name(line)
+                        # if line in seen_events:
+                        #     continue
                         if current_event:
                             events.append(current_event)
                         current_event = {
                             "event_name": line,
-                            "results": []
+                            "results": [],
+                            "relay": True if is_relay_event(line_) else False
                         }
                         seen_events.add(line)
                         continue
@@ -55,7 +61,7 @@ class Goldfins_Parser:
 
         return events
 
-    def parse_result_line_krais(self, line, is_manual=True):
+    def parse_result_line_krais(self, line, is_relay, is_manual=True):
         line = normalize_line(line)
         parts = line.split()
 
@@ -269,6 +275,7 @@ class Goldfins_Parser:
                 "best_Result": best_result, 
                 "normative": normative,
                 "points": points,
+                "relay": is_relay,
                 "is_manual_timing": is_manual
             }
 

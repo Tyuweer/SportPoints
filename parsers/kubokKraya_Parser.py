@@ -227,6 +227,7 @@ class KubokKraya_Parser:
                 "birth_year": birth_year,
                 "team": team,
                 "result": result,
+                "best_Result": result,
                 "normative": normative,
                 "points": points,
                 "is_manual_timing": is_manual

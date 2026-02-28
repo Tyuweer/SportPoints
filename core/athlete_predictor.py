@@ -1,31 +1,40 @@
 from core.utils import parse_time_to_seconds, get_points_by_place, normalize_event_name
+from core.utils import normalize_category
+from core.utils import is_relay_event
 
 def load_target_events(target_json_data):
     events = {}
     for event in target_json_data:
         # Используем новую функцию normalize_event_name
         full_key = normalize_event_name(event["event_name"])
+        preliminary_times = []  # Времена предварительных заплывов
+        final_times = [] 
+        results = event.get("relay")
+        if results:
+            continue
+        if is_relay_event(event["event_name"]):
+            continue
 
-        overall_times = []
-        final_times = []
         for r in event["results"]:
-            if "is_relay" in r and r["is_relay"]:
+            # Дополнительная проверка на уровне результата
+            if r.get("relay"):
                 continue
-            result_str = r.get("result")
+
+            result_str = r.get("best_Result")
             if result_str:
                 sec = parse_time_to_seconds(result_str)
                 if sec is not None:
-                    overall_times.append(sec)
-            final_str = r.get("final")
+                    preliminary_times.append(sec)
+            final_str = r.get("final_Result")
             if final_str:
                 sec = parse_time_to_seconds(final_str)
                 if sec is not None:
                     final_times.append(sec)
 
         events[full_key] = {
-            "overall": sorted(overall_times),
+            "overall": sorted(preliminary_times),
             "final": sorted(final_times) if final_times else None,
-            "participants": len(overall_times)
+            "participants": len(preliminary_times)
         }
     return events
 
@@ -43,10 +52,20 @@ def find_best_results_per_event(athlete_name: str, history_data_list):
 
     for data in history_data_list:
         for event in data:
-            # Используем новую функцию normalize_event_name
             full_key = normalize_event_name(event["event_name"])
+            event_gender = normalize_category(full_key)
+            results = event.get("relay")
+
+
+            if results:
+                continue
+            if is_relay_event(event["event_name"]):
+                continue# Пропускаем всё событиеFalse)
 
             for r in event["results"]:
+                if r.get("relay"):   
+                    continue
+
                 if "full_name" not in r:
                     continue
 
@@ -54,9 +73,9 @@ def find_best_results_per_event(athlete_name: str, history_data_list):
                 full_name_lower = full_name.lower()
 
                 if search_surname in full_name_lower and (search_name == "" or search_name in full_name_lower):
-                    if "result" not in r or not r["result"]:
+                    if "best_Result" not in r or not r["best_Result"]:
                         continue
-                    time_sec = parse_time_to_seconds(r["result"])
+                    time_sec = parse_time_to_seconds(r["best_Result"])
                     if time_sec is None:
                         continue
 
@@ -64,12 +83,12 @@ def find_best_results_per_event(athlete_name: str, history_data_list):
                         time_sec += 0.20
 
                     # Определяем пол спортсмена
-                    athlete_gender = detect_gender_by_name(full_name)
+                    # athlete_gender = detect_gender_by_name(event_gender)
 
                     # Если дисциплина не соответствует полу — пропускаем
-                    if "_female" in full_key and athlete_gender != "female":
+                    if "Женщины" in full_key and event_gender != "Женщины":
                         continue
-                    if "_male" in full_key and athlete_gender != "male":
+                    if "Мужчины" in full_key and event_gender != "Мужчины":
                         continue
 
                     if full_key not in all_results:
@@ -131,7 +150,7 @@ def calculate_predicted_scores(athlete_name: str, target_json_data, history_json
 
     return top3, results
 
-def detect_gender_by_name(full_name: str) -> str:
+def detect_gender_by_name(gender: str) -> str:
     # Расширенный список мужских имён
     male_names = [
         "Матвей", "Дмитрий", "Алексей", "Арсений", "Марк", "Тимофей", "Роман", "Максим", "Олег", "Ярослав",
@@ -171,6 +190,8 @@ def detect_gender_by_name(full_name: str) -> str:
         "Гаянэ", "Генриетта", "Глафира", "Джульетта", "Диана", "Дина", "Доминика", "Евдокия", "Евфросиния", "Екатерина"
     ]
 
+    return gender
+    
     # Извлекаем имя (предполагаем, что имя идёт после фамилии)
     name_parts = full_name.split()
     if len(name_parts) >= 2:
@@ -178,19 +199,19 @@ def detect_gender_by_name(full_name: str) -> str:
     elif len(name_parts) == 1:
         first_name = name_parts[0]  # Если только одно слово — возможно имя
     else:
-        return "male"  # По умолчанию мужчины
+        return "Мужчины"  # По умолчанию мужчины
 
     # Убираем регистр
     first_name_lower = first_name.lower()
 
     # Проверяем мужские и женские имена
     if any(name.lower() in first_name_lower for name in male_names):
-        return "male"
+        return "Мужчины"
     elif any(name.lower() in first_name_lower for name in female_names):
-        return "female"
+        return "Женщины"
     else:
         # Если имя не найдено — определяем по окончанию
         if first_name.endswith(('а', 'я', 'ия')) and not any(end in first_name for end in ['Илья', 'Арсений', 'Андрей', 'Георгий', 'Григорий']):
-            return "female"
+            return "Женщины"
         else:
-            return "male"  # По умолчанию мужчины
+            return "Мужчины"  # По умолчанию мужчины

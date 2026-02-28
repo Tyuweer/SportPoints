@@ -4,12 +4,13 @@ from core.utils import is_athlete_row
 from core.utils import is_event_header
 from core.utils import normalize_line
 from core.utils import normalize_event_name
+from core.utils import is_relay_event
 
 class PervenstvoKraya_Parser:
     def parse(self, pdf_path, is_manual=True):
         events = []
         current_event = None
-        seen_events = set()
+        # seen_events = set()
 
         with pdfplumber.open(pdf_path) as pdf:
             for page in pdf.pages:
@@ -31,15 +32,16 @@ class PervenstvoKraya_Parser:
                     # Проверяем, новый ли это заголовок дисциплины
                     if is_event_header(line):
                         line_ = normalize_event_name(line)
-                        if line_ in seen_events:
-                            continue
+                        # if line_ in seen_events:
+                        #     continue
                         if current_event:
                             events.append(current_event)
                         current_event = {
                             "event_name": line_,
-                            "results": []
+                            "results": [],
+                            "relay": True if is_relay_event(line_) else False
                         }
-                        seen_events.add(line_)
+                        # seen_events.add(line_)
                         continue
 
                     # Парсим строку результата
@@ -122,7 +124,6 @@ class PervenstvoKraya_Parser:
 
             # Результат
             result = None
-            
             if idx < len(parts):
                 token = parts[idx]
                 if re.match(r'\d{1,2}[,.:]\d{2}([,.:]\d{2})?$', token):
@@ -182,6 +183,7 @@ class PervenstvoKraya_Parser:
                 "birth_year": birth_year,
                 "team": team,
                 "result": result,
+                "best_Result": result,
                 "normative": normative,
                 "points": points,
                 "is_manual_timing": is_manual

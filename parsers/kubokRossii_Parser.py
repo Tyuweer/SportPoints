@@ -1,16 +1,19 @@
 import pdfplumber
 import re
-from core.utils import get_best_time
-from core.utils import is_athlete_row
-from core.utils import is_event_header
-from core.utils import normalize_line
-from core.utils import normalize_event_name
+from core.utils import (
+get_best_time,
+is_athlete_row,
+normalize_line,
+normalize_event_name,
+is_event_header,
+is_relay_event
+)
 
 class KubokRossii_Parser:
     def parse(self, pdf_path, is_manual=True):
         events = []
         current_event = None
-        seen_events = set()
+        # seen_events = set()
 
         with pdfplumber.open(pdf_path) as pdf:
             for page in pdf.pages:
@@ -35,20 +38,21 @@ class KubokRossii_Parser:
                     # Проверяем, новый ли это заголовок дисциплины
                     if is_event_header(line):
                         line_ = normalize_event_name(line)
-                        if line_ in seen_events:
-                            continue
+                        # if line_ in seen_events:
+                        #     continue
                         if current_event:
                             events.append(current_event)
                         current_event = {
                             "event_name": line_,
-                            "results": []
+                            "results": [],
+                            "relay": True if is_relay_event(line_) else False
                         }
-                        seen_events.add(line_)
+                        # seen_events.add(line_)
                         continue
 
                     # Парсим строку результата
                     if current_event and re.match(r'^\d+', line):
-                        record = self.parse_result_line_krais(line, is_manual=is_manual)
+                        record = self.parse_result_line_krais(line, current_event['relay'], is_manual=is_manual,)
                         if record:
                             current_event["results"].append(record)
 
@@ -57,7 +61,7 @@ class KubokRossii_Parser:
 
         return events
 
-    def parse_result_line_krais(self, line, is_manual=True):
+    def parse_result_line_krais(self, line, is_relay, is_manual=True,):
         line = normalize_line(line)
         parts = line.split()
 
@@ -236,7 +240,7 @@ class KubokRossii_Parser:
                     remaining = ' '.join(rest_parts[i:])
                     normative = remaining if not normative else normative + ' ' + remaining
                     break
-                
+
             
             return {
                 "place": place,
@@ -244,11 +248,12 @@ class KubokRossii_Parser:
                 "full_name": full_name,
                 "birth_year": birth_year,
                 "team": team,
-                "result1": result,
+                "result": result,
                 "final_Result": final_result,
                 "best_Result": best_result, 
                 "normative": normative,
                 "points": points,
+                "relay": is_relay,
                 "is_manual_timing": is_manual
             }
 

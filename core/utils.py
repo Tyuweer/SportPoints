@@ -83,24 +83,27 @@ def is_athlete_row(parts):
     'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля',
     'августа', 'сентября', 'октября', 'ноября', 'декабря',
     'января', 'дистанция', 'дисциплина', 'день', 'переныр', '15м',
-    'медотвод', 'отвод'
+    'медотвод', 'отвод', 'н/я', 'ф/с', 'н/кас повор', 'касание'
 
 ]
         if not parts:
             return False
         
         # Объединяем первые несколько частей для проверки
-        text_check = ' '.join(parts[:min(5, len(parts))]).lower()
+        text_check_start = ' '.join(parts[:min(5, len(parts))]).lower()
+        # Объединяем последние несколько частей для проверки
+        text_check_end = ' '.join(parts[-5:]).lower()
+
         
         # Проверка на наличие ключевых слов не-спортсмена
         for keyword in NON_ATHLETE_KEYWORDS:
-            if keyword in text_check:
+            if keyword in text_check_start or keyword in text_check_end:
                 return False
         
         # Проверка на дату в формате "26 февраля-01 марта 2025 г."
         date_pattern = r'\d{1,2}\s*(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)'
         import re
-        if re.search(date_pattern, text_check, re.IGNORECASE):
+        if re.search(date_pattern, text_check_start, re.IGNORECASE):
             return False
                 
         return True
@@ -171,25 +174,25 @@ def normalize_category(title: str) -> str:
     
     # Женские категории
     if "юниорк" in title_lower: # юниорки
-        return "Юниорки"
+        return "Женщины"
     if "девуш" in title_lower or "девоч" in title_lower: # девушки, девочки
-        return "Девушки"
-    if "женщин" in title_lower or "жен " in title_lower or title_lower.endswith("жен"):
+        return "Женщины"
+    if "Женщины" in title_lower or "жен " in title_lower or title_lower.endswith("жен"):
         return "Женщины"
         
     # Мужские категории
     if "юниор" in title_lower: # юниоры (проверяем после юниорок)
-        return "Юниоры"
-    if "юнош" in title_lower or "мальчик" in title_lower: # юноши, мальчики
-        return "Юноши"
+        return "Мужчины"
+    if "юнош" in title_lower or "мальчик" in title_lower: # , мальчики
+        return "Мужчины"
     if "мужчин" in title_lower or "муж " in title_lower or title_lower.endswith("муж"):
         return "Мужчины"
     
-    return "Я Абсолют" # Если категория не найдена
+    return "Женщины" # Если категория не найдена
 
 def normalize_distance(title: str) -> str:
     """Нормализует дистанцию (100м, 100 метров, 4х100)."""
-    # Ищем эстафеты 4х100, 4x100
+    # Ищем эстафеты 4х100
     relay_match = re.search(r'4\s*[хx]\s*(\d+)', title)
     if relay_match:
         return f"4х{relay_match.group(1)} м"
@@ -221,17 +224,17 @@ def is_relay_event(event_name: str) -> bool:
     
     return any(indicator in event_lower for indicator in relay_indicators)
 
-def get_relay_leg_distance(event_name: str) -> int | None:
-    """
-    Извлекает дистанцию одного этапа эстафеты.
-    Например: "4x100" -> 100
-    """
-    if not event_name:
-        return None
+# def get_relay_leg_distance(event_name: str) -> int | None:
+#     """
+#     Извлекает дистанцию одного этапа эстафеты.
+#     Например: "4x100" -> 100
+#     """
+#     if not event_name:
+#         return None
     
-    # Ищем паттерн 4x100 или 4х100
-    match = re.search(r'4\s*[xх]\s*(\d+)', event_name)
-    if match:
-        return int(match.group(1))
+#     # Ищем паттерн 4x100 или 4х100
+#     match = re.search(r'4\s*[xх]\s*(\d+)', event_name)
+#     if match:
+#         return int(match.group(1))
     
-    return None
+#     return None
