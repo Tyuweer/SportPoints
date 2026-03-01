@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 from pathlib import Path
 import json
+from PyQt5.QtGui import QIcon
 
 from parsers.parser_factory import get_parser_by_name, PARSERS
 
@@ -32,20 +33,21 @@ class ParserSelectionDialog(QDialog):
         ok_btn = QPushButton("OK")
         ok_btn.clicked.connect(self.accept)
         layout.addWidget(ok_btn)
-
         self.setLayout(layout)
 
     def get_selection(self):
         parser_name = self.parser_combo.currentText()
         is_manual = self.manual_fix_cb.isChecked()
         return parser_name, is_manual
+    
 
 class PredictorWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Sport Predictor")
-        self.resize(1000, 700)
+        self.setWindowTitle("Расчет очков")
+        self.resize(1200, 800)
 
+        self.setWindowIcon(QIcon('icon.ico'))
         # Папка для JSON
         self.temp_dir = Path("./temp")
         self.temp_dir.mkdir(exist_ok=True)
