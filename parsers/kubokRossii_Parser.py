@@ -40,6 +40,7 @@ class KubokRossii_Parser:
                         line_ = normalize_event_name(line)
                         # if line_ in seen_events:
                         #     continue
+                        
                         if current_event:
                             events.append(current_event)
                         current_event = {
@@ -51,17 +52,17 @@ class KubokRossii_Parser:
                         continue
 
                     # Парсим строку результата
-                    if current_event and re.match(r'^\d+', line):
-                        record = self.parse_result_line_krais(line, current_event['relay'], is_manual=is_manual,)
+                    if current_event and re.match(r'^\d+', line) and is_relay_event(line_) == False:
+                        record = self.parse_result_line_krais(line, is_manual=is_manual,)
                         if record:
                             current_event["results"].append(record)
-
+                    else: 
+                        continue
             if current_event:
                 events.append(current_event)
+        return [event for event in events if not event["relay"]]
 
-        return events
-
-    def parse_result_line_krais(self, line, is_relay, is_manual=True,):
+    def parse_result_line_krais(self, line, is_manual=True,):
         line = normalize_line(line)
         parts = line.split()
 
@@ -253,7 +254,6 @@ class KubokRossii_Parser:
                 "best_Result": best_result, 
                 "normative": normative,
                 "points": points,
-                "relay": is_relay,
                 "is_manual_timing": is_manual
             }
 
